@@ -1,0 +1,47 @@
+{
+	"name": "webdna/query-boost",
+	"description": "Craft 6's element query speed-ups for Craft 5: composite indexes and an index-friendly sort tiebreaker",
+	"type": "craft-plugin",
+	"keywords": [
+		"craft",
+		"cms",
+		"craftcms",
+		"craft-plugin",
+		"performance",
+		"element queries"
+	],
+	"support": {
+		"docs": "https://github.com/webdna/craft-query-boost/blob/main/README.md",
+		"issues": "https://github.com/webdna/craft-query-boost/issues"
+	},
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "webdna",
+			"homepage": "https://webdna.co.uk"
+		}
+	],
+	"require": {
+		"craftcms/cms": "^5.0",
+		"php": "^8.2"
+	},
+	"autoload": {
+		"psr-4": {
+			"webdna\\queryboost\\": "src/"
+		}
+	},
+	"extra": {
+		"name": "Query Boost",
+		"handle": "query-boost",
+		"hasCpSettings": false,
+		"hasCpSection": false,
+		"changelogUrl": "https://raw.githubusercontent.com/webdna/craft-query-boost/main/CHANGELOG.md",
+		"class": "webdna\\queryboost\\QueryBoost"
+	},
+	"config": {
+		"allow-plugins": {
+			"yiisoft/yii2-composer": true,
+			"craftcms/plugin-installer": true
+		}
+	}
+}
