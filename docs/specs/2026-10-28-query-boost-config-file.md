@@ -154,7 +154,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 
 | # | Rule |
 |---|---|
-| BR-1 | **The list is read only from the settings file**, through Craft's plugin-settings merge, so environment keys apply. There is no other source: not project config, not the control panel, not a run's output |
+| BR-1 | **The list is read only from the settings file**, through Craft's plugin-settings merge — or, at install, the plugin's own read of the same file with the same environment handling (BR-12) — so environment keys apply. There is no other source: not project config, not the control panel, not a run's output |
 | BR-2 | **A valid entry is an array with `table` and exactly one of `columns` (a non-empty list of strings) or `expression` (a non-empty string).** Any other key on the entry is ignored. A string entry, a missing table, both or neither of columns and expression, or an empty list is refused (BR-7) and never partly applied |
 | BR-3 | **The built-ins are always declared**, ahead of the site's list: `entries (sectionId, postDate)` and `elements (canonicalId, dateCreated)`, under the names they have today. The list cannot remove them; only uninstall can |
 | BR-4 | **A declared index is served when an index on the same columns in the same order already exists under any name**, non-unique, by Craft's own index lookup. Nothing is created for it and the output names the serving index. A declared expression is served only by an owned index of its derived name, because Craft's lookup cannot see expression indexes |
@@ -165,7 +165,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | BR-9 | **Only owned indexes are ever dropped**, and only when no built-in and no declared entry derives their name. An index on the declared columns under another name is never touched, even when its entry is struck |
 | BR-10 | **The deploy hook runs the apply step once, after Craft's `migrate/all` action completes successfully**, in console requests only, when the plugin is installed and enabled. A failed migration step means no apply. The hook prints one line per change or refusal, prefixed with the plugin's name, and a one-line summary; with nothing declared it prints that no site indexes are declared |
 | BR-11 | **The console command `query-boost/apply` runs the same step by hand.** `--dry-run` reports every entry's state and every drop it would make, changes nothing, and exits 0 unless an entry is refused. Without the flag it applies and exits 0, or non-zero when any entry was refused |
-| BR-12 | **Install applies the built-ins and the declared list together; uninstall drops every index whose name starts with `qb_`**, on every table, read from the database's own catalogue, not from the file (the file may have changed since) |
+| BR-12 | **Install applies the built-ins and the declared list together; uninstall drops every index whose name starts with `qb_`**, on every table, read from the database's own catalogue, not from the file (the file may have changed since). Install reads the settings file itself, because Craft merges a plugin's settings file into its settings only once the plugin is installed; without that read a reinstall, or a deploy that installs the plugin through project config, brings back the built-ins alone |
 | BR-13 | **Nothing in this feature runs on a web request.** The hook is attached only when the request is a console request; the apply step is reachable only from the hook, the command and install |
 | BR-14 | **The tiebreaker is rewritten only when the element table has an index that can serve the sort**: besides today's rule that every sort column is on the element table, some index on that table must list the sort's columns other than the tiebreaker, in the sort's order, as a contiguous run anywhere in the index. Column indexes only, read from the schema at most once per table per request. With no such index the query is left byte-identical to Craft's |
 | BR-15 | **The README is the contract a site developer reads**: it documents the `indexes` key with one worked entry, the derived name, served and struck, the deploy hook, the dry run, uninstall, and credits the two built-ins to craftcms/cms pull request #19579 (8 Sep 2026). A behaviour this spec adds that the README does not state is a defect |
@@ -222,7 +222,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 
 ### Test data and preconditions
 
-- **craft5** (`~/projects/craft5`, DDEV, Craft 5.11.x) with the plugin mounted and installed as the profile describes: exists; the mount is added by task 0.1's handover. Snapshot before every scenario, restore after.
+- **craft5** (`~/projects/craft5`, DDEV, Craft 5.11.5, MySQL 8.0) with the plugin installed from a copy under its `plugins/` path repository (`rsync` of the plugin's checkout, `composer require 'webdna/query-boost:*@dev'`), because the profile's bind mount needs a sandbox restart: exists. Snapshot before the scenarios, restore after, then remove the copy, the Composer lines and the `plugins.query-boost` project-config block, so the sandbox is as it was.
 - **turf5** on `feature/performance` (`~/projects/turf5`): exists, already requires the plugin; `qb_entries_sectionid_postdate` is present. The 41,000-review section is the timing fixture. Snapshot and restore.
 - **Heathfield** (`~/projects/heathfield`): exists; the Address query is BR-14's regression fixture; count carts before and after any front-end request. Snapshot and restore.
 - **A declared entry fixture** for craft5: `entries (sectionId, postDate)` is served by the built-in; the scenarios need an unserved one — `elements_sites (siteId, enabled)`, which exists on every Craft 5 site and has no composite index. **Does not exist in craft5 as an index** — correct, that is the point.
@@ -274,7 +274,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | 2 | `craft up` | Exit 0; a line naming `entries (noSuchColumn)` refused, "column not found: noSuchColumn" (the plan reads the table's columns itself, so step 4's dry run can refuse it too); a line creating the `elements_sites` index |
 | 3 | `query-boost/apply` | The same refusal line, "nothing to create" for the now-present entry, exit non-zero |
 | 4 | `query-boost/apply --dry-run` | The refusal line again, exit non-zero |
-| 5 | Fix the column to `postDate`; `craft up` | Created under its derived name; exit 0; no refusal |
+| 5 | Fix the column to `dateUpdated` (a column Craft does not index; `postDate` has Craft's own index, so an entry on it is served, BR-4); `craft up` | Created under its derived name `qb_entries_dateupdated`; exit 0; no refusal |
 
 *Success criterion: the deploy's exit code is 0 in step 2 and the command's is non-zero in steps 3 and 4.*
 
@@ -293,7 +293,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | # | Step | Expected |
 |---|---|---|
 | 1 | With TS-1's index present, `plugin/uninstall query-boost` | `SELECT … FROM information_schema.STATISTICS WHERE INDEX_NAME LIKE 'qb\_%'` returns no rows |
-| 2 | `plugin/install query-boost` | The two built-ins and `qb_elements_sites_siteid_enabled` present; install output shows the three |
+| 2 | `plugin/install query-boost`, the entry still in the file | The two built-ins and `qb_elements_sites_siteid_enabled` present; install output shows the three (the plugin reads the file at install, BR-12 — Craft has not merged it yet) |
 
 *Success criterion: step 1 returns zero rows and step 2 returns three names.*
 
@@ -323,7 +323,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 |---|---|---|
 | 1 | File: `'*' => ['tiebreaker' => true]`, `'production' => ['indexes' => [elements_sites entry]]`; craft5's environment is `dev` | — |
 | 2 | `query-boost/apply --dry-run` | "no site indexes declared"; nothing to create |
-| 3 | `CRAFT_ENVIRONMENT=production` on the same command | The entry listed as "would create" |
+| 3 | `CRAFT_ENVIRONMENT=production` for the same command — set in `.env` for the run on a site whose `bootstrap.php` loads `.env` mutably (craft5's `createUnsafeMutable` overwrites a variable given on the command line) | The entry listed as "would create" |
 
 *Success criterion: the same file yields no entry on dev and one on production.*
 
@@ -413,7 +413,7 @@ Phase 4 depends only on the harness and can be built beside 1–3; it is placed 
       Rules: BR-14 - Verify: B5 #1, TS-8 step 2
 - [x] **5.1 README and changelog** - `README.md` (the `indexes` section with a worked entry; the deploy, dry run, uninstall and Craft 6 paragraphs; "What it does" item 1 credited to pull request #19579 with #18716 kept for the query shape), `CHANGELOG.md` under Unreleased
       Rules: BR-15 - Verify: B5 #5, TS-10
-- [ ] **5.2 Real-site proof and release readiness** - no code: `query-boost/compare` and `apply --dry-run` on craft5, turf5 and Heathfield inside snapshots, the timing columns recorded in the changelog's entry; `composer validate --strict`; the spec's §7 ticked; the handover lists what Sam creates (Appendix A #4)
+- [x] **5.2 Real-site proof and release readiness** - no code was planned; the runs added the install-time settings-file read (`src/QueryBoost.php::afterInstall()`, `tests/integration/InstallTest.php`, BR-12): `query-boost/compare` and `apply --dry-run` on craft5, turf5 and Heathfield inside snapshots, the timing columns recorded in the changelog's entry; `composer validate --strict`; the spec's §7 ticked; the handover lists what Sam creates (Appendix A #4)
       Rules: BR-16 - Verify: B5 #2, B5 #3, B5 #4, TS-1, TS-8
 
 **Task right-sizing.** 2.1 and 2.2 split where a reviewer could accept the plan and reject the DDL. 3.1 is one task because install, uninstall and the hook are three callers of one step and are proved by one integration suite.
@@ -476,14 +476,14 @@ Read `_PROFILE.query-boost.md`. Everything in it applies - the environment, the 
 
 ## B4. Definition of done
 
-- [ ] Every AC in section 7 passes, TS-1 to TS-11
-- [ ] Every BR in section 5 is enforced, not merely intended, BR-1 to BR-16
-- [ ] The negative cases in section 7 behave as specified, TN-6 and TN-11 recorded as not run with Appendix A #3 open
-- [ ] The regression checks in section 7 pass on craft5, turf5 and Heathfield, in snapshots, with the timings written in the changelog entry
-- [ ] The test hooks in section 7 exist: the result object with its state constants, the public refusal reasons, the hook's condition as a callable method
-- [ ] B5 below runs clean
-- [ ] `README.md` and `CHANGELOG.md` updated in the same commits as the behaviour they describe
-- [ ] Section 8's checklist ticked, Appendix A #3 and #4 handed to Sam
+- [x] Every AC in section 7 passes, TS-1 to TS-11 (TS-1 to TS-9 on craft5 28 Oct 2026; TS-1, TS-6, TS-7 and TS-8 step 3 on Heathfield the same day)
+- [x] Every BR in section 5 is enforced, not merely intended, BR-1 to BR-16
+- [x] The negative cases in section 7 behave as specified, TN-6 and TN-11 recorded as not run with Appendix A #3 open
+- [x] The regression checks in section 7 pass on craft5, turf5 and Heathfield, in snapshots, with the timings written in the changelog entry
+- [x] The test hooks in section 7 exist: the result object with its state constants, the public refusal reasons, the hook's condition as a callable method
+- [x] B5 below runs clean
+- [x] `README.md` and `CHANGELOG.md` updated in the same commits as the behaviour they describe
+- [x] Section 8's checklist ticked, Appendix A #3 and #4 handed to Sam
 
 ## B5. Verification
 
@@ -542,3 +542,4 @@ Manual checks, each against its criterion:
 | 2026-10-28 | 0.2 | Task 2.2 built. The plan checks a column entry's columns against the table itself, so an unknown column is refused by the dry run too and the command exits non-zero on it (TS-4 step 4); the database's own message is kept for what only it can refuse (BR-7, TN-4). A drop the database refuses is recorded on the plan and counts as refused (BR-7). The lines are one renderer, `indexes\Report`, for the command and the deploy hook (3.1) | Samuel Birch |
 | 2026-10-28 | 0.3 | Task 3.1 built. The deploy hook prints a line per change or refusal and the summary (`Report::changeLines()`), so an unchanged deploy is the one summary line (BR-10, TS-7); install prints every line, so a fresh site sees the built-ins and its list by name (TS-6). The hook's condition is `QueryBoost::shouldApplyAfter(ActionEvent)`; the install migration's `safeUp` applies the built-ins alone and the plugin's `afterInstall()` the list with them; `safeDown` drops every owned index from the catalogue, logging one the database refuses and carrying on (BR-12). TS-6 and TS-7 on craft5 wait for the sandbox mount (task 5.2) | Samuel Birch |
 | 2026-10-28 | 0.4 | Task 4.1 built. `QueryRewriter::apply()` takes a fourth argument, a callable giving the prefixed element table's column indexes as `list<list<string>>`, asked only after `sortsOnlyOn()` has passed; the guard is `indexServes()`, a contiguous-run match of the sort's non-tiebreaker columns over those lists (BR-14). The read is `indexes\Schema::columnIndexes()` over Craft's `findIndexes()`, cached by the plugin in a static per table per request (B3). The rewriter's one caller is the plugin, so the compare command is unchanged. TS-8 steps 1–3 on craft5 and Heathfield wait for the sandbox mount (task 5.2) | Samuel Birch |
+| 2026-10-28 | 0.5 | Task 5.2 run. TS-6 step 2 on craft5 found install applying the built-ins alone: Craft merges a plugin's settings file only once the plugin is installed, so `afterInstall()` now reads the file itself (BR-1, BR-12; `InstallTest` +1, failed first; B5 #1 clean on both legs). Fixtures corrected from the runs: TS-4 step 5 fixes the column to `dateUpdated`, because Craft indexes `postDate` itself and that entry is served (BR-4); TS-9 step 3 sets the environment in `.env` on a site whose bootstrap loads it mutably (craft5); craft5 installs from a copy under `plugins/`, not the mount. Proved 28 Oct: every compare row SAME on craft5 (59), turf5 (74) and Heathfield (149), TS-1 to TS-9 on craft5, TS-1, TS-6, TS-7 and TS-8 step 3 on Heathfield through `migrate/all` (the hooked action; `craft up` would apply Heathfield's drifted project config, B3), no cart created; timings in the changelog | Samuel Birch |

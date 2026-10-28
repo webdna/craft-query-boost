@@ -89,9 +89,20 @@ class QueryBoost extends Plugin
     /**
      * Install applies the declared list together with the built-ins the install migration has
      * just created (BR-12), every line printed when a console command is doing the installing.
+     *
+     * Craft merges a plugin's settings file into its settings only when it creates an installed
+     * plugin (`Plugins::createPlugin()` reads the file only with stored plugin info), so at this
+     * moment the model holds the defaults and the declared list is in the file alone. The same
+     * read Craft's merge makes, made here, so a reinstall — or a deploy that installs the plugin
+     * through project config — applies the list and not only the built-ins (TS-6 step 2).
      */
     protected function afterInstall(): void
     {
+        $fileSettings = Craft::$app->getConfig()->getConfigFromFile($this->handle);
+        if (is_array($fileSettings) && $fileSettings !== []) {
+            $this->setSettings($fileSettings);
+        }
+
         $console = Craft::$app->controller;
         $this->applyIndexes($console instanceof ConsoleController ? $console : null, changesOnly: false);
     }

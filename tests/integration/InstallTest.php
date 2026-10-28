@@ -99,6 +99,40 @@ class InstallTest extends Unit
         }
     }
 
+    /**
+     * TS-6 step 2 as a real site runs it: Craft merges a plugin's settings file into its settings only
+     * once the plugin is installed (`Plugins::createPlugin()` reads the file only when it has stored
+     * plugin info), so at install the model holds the defaults and the declared list is in the file
+     * alone. The install hook reads the file itself, or a reinstall — and a deploy that installs the
+     * plugin through project config — brings back the built-ins only (BR-12).
+     */
+    public function testInstallReadsTheDeclaredListFromTheSettingsFile(): void
+    {
+        $file = Craft::$app->getConfig()->getConfigFilePath(QueryBoost::getInstance()->handle);
+        $this->assertFileDoesNotExist($file, 'the test app carries no settings file of its own');
+
+        try {
+            (new Install())->safeDown();
+            $this->withSettings([]);
+            file_put_contents($file, '<?php return ' . var_export(['indexes' => [self::SITE_ENTRY]], true) . ';');
+
+            (new Install())->safeUp();
+            $this->afterInstall();
+
+            $this->assertEqualsCanonicalizing(
+                [...array_keys(Install::INDEXES), self::SITE_NAME],
+                array_keys($this->owned()),
+            );
+        } finally {
+            if (is_file($file)) {
+                unlink($file);
+            }
+            $this->withSettings([]);
+            $this->dropQuietly(self::SITE_NAME, Table::ELEMENTS_SITES);
+            (new Install())->safeUp();
+        }
+    }
+
     // Helpers
     // -------------------------------------------------------------------------
 
