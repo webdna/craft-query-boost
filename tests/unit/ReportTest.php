@@ -76,6 +76,45 @@ class ReportTest extends Unit
         );
     }
 
+    // The deploy hook's lines (BR-10): a line per change or refusal, then the summary
+    // -------------------------------------------------------------------------
+
+    public function testTheDeployHooksLinesAreTheChangesAndRefusalsThenTheSummary(): void
+    {
+        $site = Declaration::fromEntry(self::SITE_ENTRY);
+        $plan = new Plan(
+            [
+                new PlanEntry(Plan::PRESENT, $this->builtIn(), null, true),
+                new PlanEntry(Plan::CREATE, $site, self::SITE_ENTRY, false),
+                new PlanEntry(Plan::SERVED, $site, self::SITE_ENTRY, false, servedBy: 'dev_sites'),
+                new PlanEntry(Plan::REFUSED, null, 'entries (sectionId, postDate)', false, reason: Declaration::REASON_NOT_AN_ARRAY),
+            ],
+            [new OwnedIndex('qb_entries_x0123456789', 'craft_entries', [], 'cast(…)')],
+            ['qb_elements_sites_aghost' => 'gone'],
+        );
+
+        $this->assertSame([
+            'created qb_elements_sites_siteid_enabled on elements_sites (siteId, enabled)',
+            'refused "entries (sectionId, postDate)": ' . Declaration::REASON_NOT_AN_ARRAY,
+            'dropped qb_entries_x0123456789 on craft_entries',
+            'not dropped qb_elements_sites_aghost: gone',
+            '1 present, 1 served, 1 created, 1 dropped, 1 refused, 1 not dropped.',
+        ], (new Report($plan, applied: true))->changeLines());
+    }
+
+    public function testADeployWithNothingDeclaredAndNothingToDoIsOneLine(): void
+    {
+        $plan = new Plan([
+            new PlanEntry(Plan::PRESENT, $this->builtIn(), null, true),
+            new PlanEntry(Plan::PRESENT, Declaration::builtIns()[1], null, true),
+        ], []);
+
+        $this->assertSame(
+            ['2 present, nothing to create or drop; no site indexes are declared.'],
+            (new Report($plan, applied: true))->changeLines(),
+        );
+    }
+
     private function builtIn(): Declaration
     {
         return Declaration::builtIns()[0];

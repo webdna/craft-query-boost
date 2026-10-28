@@ -2,18 +2,27 @@
 
 namespace webdna\queryboost\migrations;
 
+use Craft;
 use craft\db\Migration;
 use craft\db\Table;
-use craft\helpers\Db;
+use webdna\queryboost\indexes\Schema;
+use webdna\queryboost\indexes\Sync;
+use yii\db\Exception as DbException;
 
 /**
- * Adds the composite indexes Craft 6 ships in place of Craft 5's single-column ones.
+ * Install creates the built-in indexes through the same apply step as the deploy hook and the
+ * `query-boost/apply` command; uninstall drops every index the plugin owns (BR-3, BR-12).
  *
- * Each is created under a `qb_` name only if no index on those columns exists, and uninstalling
- * drops only those names, so an index Craft (or a Craft 6 upgrade) created itself is never touched.
+ * Ownership is the `qb_` prefix. A built-in is created only when no index on its columns exists
+ * under any name, and uninstall reads the owned names from the database's own catalogue, so an
+ * index Craft (or a Craft 6 upgrade) created itself is never touched, and a declared index whose
+ * entry has since left the file still goes.
  */
 class Install extends Migration
 {
+    /**
+     * The two Craft 6 indexes, BR-3's list; `Declaration::builtIns()` is tied to it by a test.
+     */
     public const INDEXES = [
         'qb_entries_sectionid_postdate' => [Table::ENTRIES, ['sectionId', 'postDate']],
         'qb_elements_canonicalid_datecreated' => [Table::ELEMENTS, ['canonicalId', 'dateCreated']],
@@ -21,23 +30,28 @@ class Install extends Migration
 
     public function safeUp(): bool
     {
-        foreach (self::INDEXES as $name => [$table, $columns]) {
-            if (Db::findIndex($table, $columns, false, $this->db) === null) {
-                $this->createIndex($name, $table, $columns);
-            }
-        }
+        // The built-ins alone: the plugin's install hook then applies the declared list with them.
+        (new Sync($this->schema()))->apply([]);
 
         return true;
     }
 
     public function safeDown(): bool
     {
-        foreach (self::INDEXES as $name => [$table, $columns]) {
-            if (Db::findIndex($table, $columns, false, $this->db) === $name) {
-                $this->dropIndex($name, $table);
+        $schema = $this->schema();
+        foreach ($schema->ownedIndexes() as $index) {
+            try {
+                $schema->dropIndex($index);
+            } catch (DbException $e) {
+                Craft::warning("$index->name on $index->table was not dropped: {$e->getMessage()}", 'query-boost');
             }
         }
 
         return true;
+    }
+
+    private function schema(): Schema
+    {
+        return new Schema($this->db);
     }
 }

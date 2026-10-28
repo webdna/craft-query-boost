@@ -29,6 +29,35 @@ final class Report
         foreach ($this->plan->entries as $entry) {
             $lines[] = $this->entryLine($entry);
         }
+
+        return $this->withDropsAndSummary($lines);
+    }
+
+    /**
+     * The deploy hook's lines (BR-10): a line per change or refusal — the entries created or
+     * refused, the drops, the drops refused — then the summary. A deploy with nothing to do, or
+     * nothing declared, is the summary alone: one line.
+     *
+     * @return list<string>
+     */
+    public function changeLines(): array
+    {
+        $lines = [];
+        foreach ($this->plan->entries as $entry) {
+            if ($entry->state === Plan::CREATE || $entry->state === Plan::REFUSED) {
+                $lines[] = $this->entryLine($entry);
+            }
+        }
+
+        return $this->withDropsAndSummary($lines);
+    }
+
+    /**
+     * @param list<string> $lines
+     * @return list<string>
+     */
+    private function withDropsAndSummary(array $lines): array
+    {
         foreach ($this->plan->drops as $index) {
             $lines[] = $this->dropLine($index);
         }
