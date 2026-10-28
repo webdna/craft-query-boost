@@ -403,7 +403,7 @@ Phase 4 depends only on the harness and can be built beside 1–3; it is placed 
       Rules: BR-16 - Verify: B5 #1, TS-11
 - [x] **1.1 The settings key and the declaration** - `src/models/Settings.php` (`indexes`), `src/indexes/Declaration.php` (validation, refusal reasons as constants, derived name), `tests/unit/DeclarationTest.php`
       Rules: BR-1, BR-2, BR-3, BR-5 - Verify: B5 #1, TN-1, TN-2, TN-7
-- [ ] **2.1 The schema reader and the plan** - `src/indexes/Schema.php` (owned indexes from `information_schema.STATISTICS` on MySQL and `pg_indexes` on PostgreSQL; served lookup through `Db::findIndex`; the table-exists check), `src/indexes/Plan.php` (the result object and its state constants), `src/indexes/Sync.php::plan()`, `tests/unit/PlanTest.php`
+- [x] **2.1 The schema reader and the plan** - `src/indexes/Schema.php` (owned indexes from `information_schema.STATISTICS` on MySQL and `pg_indexes` on PostgreSQL; served lookup through `Db::findIndex`; the table-exists check), `src/indexes/Plan.php` (the result object and its state constants), `src/indexes/Sync.php::plan()`, `tests/unit/PlanTest.php`
       Rules: BR-4, BR-6, BR-9 - Verify: B5 #1, TN-5, TN-13
 - [ ] **2.2 Apply and the command** - `src/indexes/Sync.php::apply()` (create then drop, each refusal caught and recorded), `src/console/controllers/ApplyController.php` (`--dry-run`, output lines, exit codes), `tests/integration/ApplyTest.php`
       Rules: BR-6, BR-7, BR-8, BR-11, BR-13 - Verify: B5 #1, B5 #4, TS-1, TS-2, TS-3, TS-4, TS-5, TN-3, TN-4, TN-12
