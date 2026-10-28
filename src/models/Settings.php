@@ -23,4 +23,16 @@ class Settings extends Model
      * shows the optimizer reading `elements` first.
      */
     public bool $straightJoin = false;
+
+    /**
+     * @var array<array-key, mixed> The indexes a performance run proved for this site, created under
+     * the plugin's `qb_` prefix after every `migrate/all` and on `query-boost/apply`, dropped when
+     * struck from the list. Each entry is an array with `table` (Craft's name without the prefix,
+     * e.g. `elements_sites`) and either `columns` (a list, in index order) or `expression` (one
+     * indexable expression as MySQL prints it); any other key is kept for the reader and ignored.
+     * The two built-ins (`entries (sectionId, postDate)`, `elements (canonicalId, dateCreated)`) are
+     * always declared ahead of this list. Read only from this file, so an environment key applies.
+     * `indexes\Declaration` is the shape; an entry that breaks it is reported and skipped.
+     */
+    public array $indexes = [];
 }
