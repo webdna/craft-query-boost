@@ -113,7 +113,8 @@ with its whitespace collapsed; a column name that would pass 60 characters becom
 table + `_h` + ten hex characters of the SHA-1 of the definition, so no name reaches MySQL's limit
 of 64 or PostgreSQL's of 63. The same entry always derives the same name. The `qb_` prefix is how
 the plugin knows its own indexes: it creates and drops only names that carry it, and a `name` key
-on an entry is ignored.
+on an entry is ignored. Any index named `qb_…` is treated as the plugin's, whoever created it, and
+may be dropped on the next apply: give an index of your own another name.
 
 **Served.** When an index on the same columns in the same order already exists under any name,
 nothing is created for the entry and the output names the index that serves it. The two built-ins
@@ -138,7 +139,8 @@ The plugin applies the list once, straight after Craft's `migrate/all` action co
 successfully. `craft up` runs that action first, so a deploy that runs `craft up` — or
 `migrate/all` itself — picks the list up with no change to the deploy. A failed migration step
 means no apply. The hook is attached only for console requests, and only while the plugin is
-installed and enabled.
+installed and enabled. A host whose deploy runs neither `craft up` nor `migrate/all` applies the
+list only when its deploy calls `php craft query-boost/apply`.
 
 The deploy output gains one line per change or refusal, prefixed with the plugin's name, and a
 summary. Declaring the entry above and deploying prints:
