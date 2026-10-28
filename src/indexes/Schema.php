@@ -95,6 +95,32 @@ class Schema
     }
 
     /**
+     * The table's column indexes, each its columns in index order and under no name: BR-14's
+     * picture of an element table, which the guard searches for a contiguous run. Craft's own
+     * reader, so column indexes only: on MySQL it cannot see an expression index at all, and on
+     * PostgreSQL an expression part comes back as its text, which no sort column can equal.
+     *
+     * @param string $table The prefixed table, `{{%entries}}`
+     * @return list<list<string>>
+     */
+    public function columnIndexes(string $table): array
+    {
+        /** @var array<string, array{columns: array<string>, unique: bool}> $found */
+        $found = $this->db()->getSchema()->findIndexes($table);
+
+        $indexes = [];
+        foreach ($found as $index) {
+            $columns = [];
+            foreach ($index['columns'] as $column) {
+                $columns[] = $column;
+            }
+            $indexes[] = $columns;
+        }
+
+        return $indexes;
+    }
+
+    /**
      * BR-8's statement: a plain non-unique `CREATE INDEX` under the derived name, on the prefixed
      * table so the site's prefix is honoured, with no `ALGORITHM` or `LOCK` clause so the server's
      * online default applies. An expression sits in its own parentheses, the form MySQL and

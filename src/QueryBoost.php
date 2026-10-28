@@ -27,6 +27,14 @@ class QueryBoost extends Plugin
 {
     public string $schemaVersion = '1.0.0';
 
+    /**
+     * Each element table's column indexes, read once per table per request for BR-14's guard: a
+     * `SHOW CREATE TABLE` per element query would cost more than the rewrite saves (B3).
+     *
+     * @var array<string, list<list<string>>>
+     */
+    private static array $columnIndexes = [];
+
     public function init(): void
     {
         parent::init();
@@ -56,6 +64,7 @@ class QueryBoost extends Plugin
                 $query->subQuery,
                 $settings->tiebreaker,
                 $settings->straightJoin && Craft::$app->getDb()->getIsMysql(),
+                fn(string $table): array => self::$columnIndexes[$table] ??= (new Schema())->columnIndexes($table),
             );
         });
     }

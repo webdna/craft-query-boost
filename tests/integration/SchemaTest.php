@@ -47,6 +47,21 @@ class SchemaTest extends Unit
         $this->assertNull($schema->findIndex(Table::ENTRIES, ['postDate', 'sectionId']));
     }
 
+    /**
+     * BR-14's picture of an element table: each column index as its columns in index order, under
+     * no name, so the guard can look for a contiguous run.
+     */
+    public function testColumnIndexesListEachIndexsColumnsInOrder(): void
+    {
+        $indexes = (new Schema(Craft::$app->getDb()))->columnIndexes(Table::ENTRIES);
+
+        $this->assertContains(['sectionId', 'postDate'], $indexes);
+        $this->assertNotContains(['postDate', 'sectionId'], $indexes);
+        foreach ($indexes as $columns) {
+            $this->assertNotSame([], $columns);
+        }
+    }
+
     public function testAnExpressionIndexIsInTheCatalogueThoughCraftsReaderCannotSeeIt(): void
     {
         $db = Craft::$app->getDb();

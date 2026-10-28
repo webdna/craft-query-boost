@@ -19,8 +19,11 @@ class QueryRewriter
      * subquery has none and was left alone.
      *
      * @param Query<array-key,mixed> $subQuery
+     * @param callable(string): list<list<string>> $columnIndexes The element table's column indexes,
+     * each its columns in index order, given the prefixed table (`{{%entries}}`). Asked only once
+     * the sort has passed the first guard, so a sort that fails it costs no schema read (BR-14).
      */
-    public static function apply(Query $subQuery, bool $tiebreaker, bool $straightJoin): ?string
+    public static function apply(Query $subQuery, bool $tiebreaker, bool $straightJoin, callable $columnIndexes): ?string
     {
         if (!is_array($subQuery->from) || ($subQuery->from['elements'] ?? null) !== Table::ELEMENTS) {
             return null;
@@ -32,7 +35,11 @@ class QueryRewriter
         }
         [$index, $alias, $table] = $found;
 
-        if ($tiebreaker && self::sortsOnlyOn($subQuery, $alias)) {
+        if (
+            $tiebreaker &&
+            self::sortsOnlyOn($subQuery, $alias) &&
+            self::indexServes($subQuery, $alias, $columnIndexes($table[$alias]))
+        ) {
             $orderBy = [];
             foreach ($subQuery->orderBy as $column => $direction) {
                 $orderBy[$column === 'elements.id' ? "$alias.id" : $column] = $direction;
@@ -74,6 +81,56 @@ class QueryRewriter
         }
 
         return count($subQuery->orderBy) > 1;
+    }
+
+    /**
+     * BR-14, on top of `sortsOnlyOn()`: whether some index on the element table lists the sort's
+     * columns other than the tiebreaker, in the sort's order, as a contiguous run anywhere in the
+     * index. InnoDB ends every secondary index with the primary key, so the tiebreaker needs no
+     * column of its own. Only such an index lets the element table serve the whole sort; without
+     * one the rewrite would merely move the filesort, so the subquery is left exactly as Craft
+     * built it.
+     *
+     * Expects a sort `sortsOnlyOn()` has passed: an `elements.id` tiebreaker and at least one other
+     * column, every one prefixed with the alias.
+     *
+     * @param Query<array-key,mixed> $subQuery
+     * @param list<list<string>> $indexes Each index as its columns in index order
+     */
+    private static function indexServes(Query $subQuery, string $alias, array $indexes): bool
+    {
+        $columns = [];
+        foreach (array_keys($subQuery->orderBy ?? []) as $column) {
+            if ($column !== 'elements.id') {
+                $columns[] = substr((string)$column, strlen($alias) + 1);
+            }
+        }
+
+        foreach ($indexes as $index) {
+            if (self::containsRun($index, $columns)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the run appears in the list, whole and in order, starting at any position.
+     *
+     * @param list<string> $list
+     * @param list<string> $run
+     */
+    private static function containsRun(array $list, array $run): bool
+    {
+        $length = count($run);
+        for ($start = 0; $start + $length <= count($list); $start++) {
+            if (array_slice($list, $start, $length) === $run) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

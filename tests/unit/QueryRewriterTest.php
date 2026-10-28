@@ -12,11 +12,15 @@ use webdna\queryboost\QueryRewriter;
  * subquery: `FROM elements JOIN elements_sites JOIN <element table>`, the element table joined on
  * `[[<alias>.id]] = [[elements.id]]`, the sort ending in an `elements.id` tiebreaker.
  *
- * Today's behaviour, pinned before the index list is built on top of it (spec §7, the first test in
- * the harness). Nothing here touches the database.
+ * The behaviour before the index-aware guard, pinned (spec §7, the first test in the harness) and
+ * kept by handing the rewriter a list in which an index serves every sort used here; which sorts an
+ * index serves is `GuardTest`'s. Nothing here touches the database.
  */
 class QueryRewriterTest extends Unit
 {
+    /** The element table's column indexes: the built-in beside Craft's own `typeId` index */
+    private const INDEXES = [['sectionId', 'postDate'], ['typeId']];
+
     private const ELEMENT_SITES_JOIN = [
         'INNER JOIN',
         ['elements_sites' => Table::ELEMENTS_SITES],
@@ -42,7 +46,7 @@ class QueryRewriterTest extends Unit
     {
         $query = $this->entriesSubQuery(['entries.postDate' => SORT_DESC, 'elements.id' => SORT_DESC]);
 
-        $alias = QueryRewriter::apply($query, true, false);
+        $alias = QueryRewriter::apply($query, true, false, self::indexes());
 
         $this->assertSame('entries', $alias);
         $this->assertSame(['entries.postDate' => SORT_DESC, 'entries.id' => SORT_DESC], $query->orderBy);
@@ -52,11 +56,11 @@ class QueryRewriterTest extends Unit
 
     public function testTiebreakerKeepsTheDirectionOfEachColumn(): void
     {
-        $query = $this->entriesSubQuery(['entries.title' => SORT_ASC, 'elements.id' => SORT_ASC]);
+        $query = $this->entriesSubQuery(['entries.typeId' => SORT_ASC, 'elements.id' => SORT_ASC]);
 
-        QueryRewriter::apply($query, true, false);
+        QueryRewriter::apply($query, true, false, self::indexes());
 
-        $this->assertSame(['entries.title' => SORT_ASC, 'entries.id' => SORT_ASC], $query->orderBy);
+        $this->assertSame(['entries.typeId' => SORT_ASC, 'entries.id' => SORT_ASC], $query->orderBy);
     }
 
     /**
@@ -68,7 +72,7 @@ class QueryRewriterTest extends Unit
         $orderBy = ['elements.dateCreated' => SORT_DESC, 'elements.id' => SORT_DESC];
         $query = $this->subQuery('addresses', Table::ADDRESSES, $orderBy);
 
-        $alias = QueryRewriter::apply($query, true, false);
+        $alias = QueryRewriter::apply($query, true, false, self::indexes());
 
         $this->assertSame('addresses', $alias);
         $this->assertSame($orderBy, $query->orderBy);
@@ -79,7 +83,7 @@ class QueryRewriterTest extends Unit
         $orderBy = ['entries.postDate' => SORT_DESC, 'elements_sites.slug' => SORT_ASC, 'elements.id' => SORT_DESC];
         $query = $this->entriesSubQuery($orderBy);
 
-        QueryRewriter::apply($query, true, false);
+        QueryRewriter::apply($query, true, false, self::indexes());
 
         $this->assertSame($orderBy, $query->orderBy);
     }
@@ -88,7 +92,7 @@ class QueryRewriterTest extends Unit
     {
         $query = $this->entriesSubQuery(['elements.id' => SORT_DESC]);
 
-        QueryRewriter::apply($query, true, false);
+        QueryRewriter::apply($query, true, false, self::indexes());
 
         $this->assertSame(['elements.id' => SORT_DESC], $query->orderBy);
     }
@@ -97,7 +101,7 @@ class QueryRewriterTest extends Unit
     {
         $query = $this->entriesSubQuery(['entries.postDate' => SORT_DESC]);
 
-        QueryRewriter::apply($query, true, false);
+        QueryRewriter::apply($query, true, false, self::indexes());
 
         $this->assertSame(['entries.postDate' => SORT_DESC], $query->orderBy);
     }
@@ -107,7 +111,7 @@ class QueryRewriterTest extends Unit
         $orderBy = ['entries.postDate' => SORT_DESC, 'elements.id' => SORT_DESC];
         $query = $this->entriesSubQuery($orderBy);
 
-        $alias = QueryRewriter::apply($query, false, false);
+        $alias = QueryRewriter::apply($query, false, false, self::indexes());
 
         $this->assertSame('entries', $alias);
         $this->assertSame($orderBy, $query->orderBy);
@@ -123,7 +127,7 @@ class QueryRewriterTest extends Unit
         $query = $this->entriesSubQuery(['entries.postDate' => SORT_DESC]);
         $query->join[] = self::STRUCTURE_JOIN;
 
-        $alias = QueryRewriter::apply($query, false, true);
+        $alias = QueryRewriter::apply($query, false, true, self::indexes());
 
         $this->assertSame('entries', $alias);
         $this->assertSame(['entries' => Table::ENTRIES], $query->from);
@@ -139,7 +143,7 @@ class QueryRewriterTest extends Unit
     {
         $query = $this->entriesSubQuery(null);
 
-        QueryRewriter::apply($query, false, true);
+        QueryRewriter::apply($query, false, true, self::indexes());
 
         $this->assertSame(['entries' => Table::ENTRIES], $query->from);
         $this->assertSame('STRAIGHT_JOIN', $query->join[0][0]);
@@ -153,7 +157,7 @@ class QueryRewriterTest extends Unit
     {
         $query = $this->entriesSubQuery(['entries.postDate' => SORT_DESC, 'elements.id' => SORT_DESC]);
 
-        QueryRewriter::apply($query, false, true);
+        QueryRewriter::apply($query, false, true, self::indexes());
 
         $this->assertSame(['elements' => Table::ELEMENTS], $query->from);
         $this->assertSame([self::ELEMENT_SITES_JOIN, self::ENTRIES_JOIN], $query->join);
@@ -163,7 +167,7 @@ class QueryRewriterTest extends Unit
     {
         $query = $this->entriesSubQuery(['entries.postDate' => SORT_DESC, 'elements.id' => SORT_DESC]);
 
-        QueryRewriter::apply($query, true, true);
+        QueryRewriter::apply($query, true, true, self::indexes());
 
         $this->assertSame(['entries.postDate' => SORT_DESC, 'entries.id' => SORT_DESC], $query->orderBy);
         $this->assertSame(['entries' => Table::ENTRIES], $query->from);
@@ -184,7 +188,7 @@ class QueryRewriterTest extends Unit
             ->innerJoin(['elements_sites' => Table::ELEMENTS_SITES], '[[elements_sites.elementId]] = [[elements.id]]')
             ->orderBy($orderBy);
 
-        $alias = QueryRewriter::apply($query, true, true);
+        $alias = QueryRewriter::apply($query, true, true, self::indexes());
 
         $this->assertNull($alias);
         $this->assertSame($orderBy, $query->orderBy);
@@ -200,7 +204,7 @@ class QueryRewriterTest extends Unit
             ->innerJoin(['elements' => Table::ELEMENTS], '[[entries.id]] = [[elements.id]]')
             ->orderBy($orderBy);
 
-        $alias = QueryRewriter::apply($query, true, true);
+        $alias = QueryRewriter::apply($query, true, true, self::indexes());
 
         $this->assertNull($alias);
         $this->assertSame($orderBy, $query->orderBy);
@@ -215,7 +219,7 @@ class QueryRewriterTest extends Unit
             ->innerJoin(['relations' => Table::RELATIONS], '[[relations.targetId]] = [[elements.id]]')
             ->orderBy($orderBy);
 
-        $alias = QueryRewriter::apply($query, true, true);
+        $alias = QueryRewriter::apply($query, true, true, self::indexes());
 
         $this->assertNull($alias);
         $this->assertSame($orderBy, $query->orderBy);
@@ -223,6 +227,11 @@ class QueryRewriterTest extends Unit
 
     // Fixtures
     // -------------------------------------------------------------------------
+
+    private static function indexes(): callable
+    {
+        return fn(string $table): array => self::INDEXES;
+    }
 
     /**
      * @param array<string,int>|null $orderBy
