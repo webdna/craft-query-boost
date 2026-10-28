@@ -3,9 +3,10 @@
 namespace webdna\queryboost\indexes;
 
 /**
- * What an apply would do: one line per declared entry, built-ins first, in list order, then the
- * owned indexes nothing derives any more. Built by `Sync::plan()`, carried out by `Sync::apply()`,
- * rendered by the console command and the deploy hook.
+ * What an apply would do, or did: one line per declared entry, built-ins first, in list order, then
+ * the owned indexes nothing derives any more. Built by `Sync::plan()`; `Sync::apply()` returns a
+ * second one with what the database refused written in; the console command and the deploy hook
+ * render either.
  */
 final class Plan
 {
@@ -23,20 +24,24 @@ final class Plan
 
     /**
      * @param list<PlanEntry> $entries Every declared entry, the built-ins first, in list order
-     * @param list<OwnedIndex> $drops Every owned index no built-in and no declared entry derives (BR-9)
+     * @param list<OwnedIndex> $drops Every owned index no built-in and no declared entry derives (BR-9); after an apply, the ones dropped
+     * @param array<string, string> $refusedDrops After an apply, each drop the database refused: its name to the database's message
      */
     public function __construct(
         public readonly array $entries,
         public readonly array $drops,
+        public readonly array $refusedDrops = [],
     ) {
     }
 
     /**
-     * How many entries were refused; the console command's exit code is non-zero when this is not 0.
+     * How many entries were refused, plus any drop the database refused; the console command's exit
+     * code is non-zero when this is not 0 (BR-7, BR-11).
      */
     public function refusedCount(): int
     {
-        return count(array_filter($this->entries, fn(PlanEntry $entry) => $entry->state === self::REFUSED));
+        return count(array_filter($this->entries, fn(PlanEntry $entry) => $entry->state === self::REFUSED))
+            + count($this->refusedDrops);
     }
 
     /**

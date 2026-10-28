@@ -5,11 +5,13 @@ namespace webdna\queryboost\indexes;
 use Craft;
 use craft\db\Connection;
 use craft\helpers\Db;
+use yii\db\Exception as DbException;
 
 /**
- * What the plan reads from the database: the owned-index catalogue, whether a table exists, and
- * Craft's served lookup (BR-4). Three reads, each overridable so a unit test can hand the plan a
- * recorded picture of a database instead of one.
+ * The database as the sync sees it. What the plan reads: the owned-index catalogue, whether a table
+ * and a column exist, and Craft's served lookup (BR-4). What the apply runs: the one `CREATE INDEX`
+ * and the one `DROP INDEX` (BR-8). Each is a plain method, so a unit test can hand the plan a
+ * recorded picture of a database and an integration test can lie about one index.
  *
  * The catalogue is read from `information_schema.STATISTICS` (MySQL and MariaDB) or `pg_indexes`
  * (PostgreSQL), never through Craft's `findIndexes()`: Craft's MySQL reader parses
@@ -70,6 +72,17 @@ class Schema
     }
 
     /**
+     * Whether the table has the column, so an entry naming one it lacks is refused before any
+     * statement — by the dry run too, which is what lets the command exit non-zero on it (TS-4).
+     *
+     * @param string $table The prefixed table, `{{%entries}}`
+     */
+    public function hasColumn(string $table, string $column): bool
+    {
+        return $this->db()->getTableSchema($table)?->getColumn($column) !== null;
+    }
+
+    /**
      * Craft's own lookup: the name of a non-unique index on exactly these columns in this order,
      * under any name, or null (BR-4). Column indexes only; it cannot see an expression index.
      *
@@ -79,6 +92,42 @@ class Schema
     public function findIndex(string $table, array $columns): ?string
     {
         return Db::findIndex($table, $columns, false, $this->db());
+    }
+
+    /**
+     * BR-8's statement: a plain non-unique `CREATE INDEX` under the derived name, on the prefixed
+     * table so the site's prefix is honoured, with no `ALGORITHM` or `LOCK` clause so the server's
+     * online default applies. An expression sits in its own parentheses, the form MySQL and
+     * PostgreSQL both take.
+     *
+     * @throws DbException when the database refuses it; its message is the entry's reason (BR-7)
+     */
+    public function createIndex(Declaration $declaration): void
+    {
+        $db = $this->db();
+
+        if ($declaration->isExpression()) {
+            $db->createCommand(sprintf(
+                'CREATE INDEX %s ON %s ((%s))',
+                $db->quoteTableName($declaration->name()),
+                $declaration->prefixedTable(),
+                $declaration->expression,
+            ))->execute();
+
+            return;
+        }
+
+        $db->createCommand()->createIndex($declaration->name(), $declaration->prefixedTable(), $declaration->columns)->execute();
+    }
+
+    /**
+     * Drops an owned index by the name and table the catalogue gave it (BR-9).
+     *
+     * @throws DbException when the database refuses it
+     */
+    public function dropIndex(OwnedIndex $index): void
+    {
+        $this->db()->createCommand()->dropIndex($index->name, $index->table)->execute();
     }
 
     private function db(): Connection

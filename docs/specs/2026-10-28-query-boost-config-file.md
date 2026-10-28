@@ -160,7 +160,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | BR-4 | **A declared index is served when an index on the same columns in the same order already exists under any name**, non-unique, by Craft's own index lookup. Nothing is created for it and the output names the serving index. A declared expression is served only by an owned index of its derived name, because Craft's lookup cannot see expression indexes |
 | BR-5 | **The index name is derived**: `qb_` + table + `_` + the columns lower-cased and joined with `_`, the built-ins' pattern (`qb_entries_sectionid_postdate`). An expression's name is `qb_` + table + `_x` + the first ten hex characters of the SHA-1 of the expression with its whitespace collapsed. A column name past 60 characters becomes `qb_` + table + `_h` + the first ten hex characters of the SHA-1 of the full definition, so no name reaches MySQL's 64-character or PostgreSQL's 63-character limit. The same entry always derives the same name |
 | BR-6 | **Apply is idempotent and ordered:** validate every entry; read the owned indexes once; create each declared-and-not-served entry in list order; then drop each owned index that is neither a built-in nor derived from a declared entry. An entry that appears twice is created once and reported as served by the first. A second apply on an unchanged list changes nothing |
-| BR-7 | **A refused entry never stops the others or the deploy.** Its line names the entry (table and definition) and the reason: the shape rule it broke, the table not found, or the database's own message. The apply step's result records it; the console command exits non-zero when any entry was refused; the deploy hook prints and logs it and leaves the deploy's exit code alone |
+| BR-7 | **A refused entry never stops the others or the deploy.** Its line names the entry (table and definition) and the reason: the shape rule it broke, the table or a column not found, or the database's own message. A drop the database refuses is recorded the same way and counts as refused. The apply step's result records it; the console command exits non-zero when any entry was refused; the deploy hook prints and logs it and leaves the deploy's exit code alone |
 | BR-8 | **Creation is plain `CREATE INDEX`**: non-unique, no `ALGORITHM` or `LOCK` clause, so MySQL's online default applies, on `{{%table}}` so the site's prefix is honoured |
 | BR-9 | **Only owned indexes are ever dropped**, and only when no built-in and no declared entry derives their name. An index on the declared columns under another name is never touched, even when its entry is struck |
 | BR-10 | **The deploy hook runs the apply step once, after Craft's `migrate/all` action completes successfully**, in console requests only, when the plugin is installed and enabled. A failed migration step means no apply. The hook prints one line per change or refusal, prefixed with the plugin's name, and a one-line summary; with nothing declared it prints that no site indexes are declared |
@@ -271,7 +271,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | # | Step | Expected |
 |---|---|---|
 | 1 | File declares `entries (noSuchColumn)` first, then `elements_sites (siteId, enabled)` | — |
-| 2 | `craft up` | Exit 0; a line naming `entries (noSuchColumn)` with MySQL's unknown-column message; a line creating the `elements_sites` index |
+| 2 | `craft up` | Exit 0; a line naming `entries (noSuchColumn)` refused, "column not found: noSuchColumn" (the plan reads the table's columns itself, so step 4's dry run can refuse it too); a line creating the `elements_sites` index |
 | 3 | `query-boost/apply` | The same refusal line, "nothing to create" for the now-present entry, exit non-zero |
 | 4 | `query-boost/apply --dry-run` | The refusal line again, exit non-zero |
 | 5 | Fix the column to `postDate`; `craft up` | Created under its derived name; exit 0; no refusal |
@@ -354,7 +354,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | TN-1 | A string entry (`'entries (sectionId, postDate)'`) | Refused: "an entry is an array with table and columns or expression"; the rest applied (BR-2, BR-7) |
 | TN-2 | An entry with both `columns` and `expression`, or neither, or `columns` empty | Refused with the shape reason; nothing partly created |
 | TN-3 | A table that does not exist (`entrees`) | Refused: table not found; no DDL attempted |
-| TN-4 | A column that does not exist | Refused with the database's message; the statement failed, nothing to undo |
+| TN-4 | A column that does not exist | Refused by the plan as "column not found: <column>" before any statement, so the dry run refuses it too (TS-4 step 4). A statement only the database can refuse (a TEXT column with no key length, a duplicate name) is refused with the database's own message on one line; it failed, nothing to undo |
 | TN-5 | The same entry declared twice | Created once; the second reported as served by the first (BR-6) |
 | TN-6 | An expression entry on MariaDB | Refused with the server's message (MariaDB has no expression indexes). **Not run**: no MariaDB copy (Appendix A #3); the refusal path is TN-4's |
 | TN-7 | A column name that makes the derived name exceed 60 characters | The hashed name form (BR-5); the index created; a second apply finds it present |
@@ -405,7 +405,7 @@ Phase 4 depends only on the harness and can be built beside 1–3; it is placed 
       Rules: BR-1, BR-2, BR-3, BR-5 - Verify: B5 #1, TN-1, TN-2, TN-7
 - [x] **2.1 The schema reader and the plan** - `src/indexes/Schema.php` (owned indexes from `information_schema.STATISTICS` on MySQL and `pg_indexes` on PostgreSQL; served lookup through `Db::findIndex`; the table-exists check), `src/indexes/Plan.php` (the result object and its state constants), `src/indexes/Sync.php::plan()`, `tests/unit/PlanTest.php`
       Rules: BR-4, BR-6, BR-9 - Verify: B5 #1, TN-5, TN-13
-- [ ] **2.2 Apply and the command** - `src/indexes/Sync.php::apply()` (create then drop, each refusal caught and recorded), `src/console/controllers/ApplyController.php` (`--dry-run`, output lines, exit codes), `tests/integration/ApplyTest.php`
+- [x] **2.2 Apply and the command** - `src/indexes/Sync.php::apply()` (create then drop, each refusal caught and recorded), `src/console/controllers/ApplyController.php` (`--dry-run`, output lines, exit codes), `tests/integration/ApplyTest.php`
       Rules: BR-6, BR-7, BR-8, BR-11, BR-13 - Verify: B5 #1, B5 #4, TS-1, TS-2, TS-3, TS-4, TS-5, TN-3, TN-4, TN-12
 - [ ] **3.1 The deploy hook, install and uninstall** - `src/QueryBoost.php` (the after-action listener on `craft\console\controllers\MigrateController`, console-only; `afterInstall()` applying the list), `src/migrations/Install.php` (`safeUp` through the same apply step for the built-ins; `safeDown` dropping every `qb_` index from the catalogue), `tests/integration/HookTest.php`, `tests/integration/InstallTest.php`
       Rules: BR-10, BR-12, BR-13 - Verify: B5 #1, TS-6, TS-7, TN-9, TN-10, TN-15
@@ -539,3 +539,4 @@ Manual checks, each against its criterion:
 | Date | Version | Change | By |
 |---|---|---|---|
 | 2026-10-28 | 0.1 | First draft, from the 28 Oct scope note's Query Boost half and the interview the same day (deploy hook after `migrate/all`, uninstall drops every owned index, the guard and README fix in, the rest Later; compose harness; report-and-continue on a refused entry; GitHub and Packagist release) | Samuel Birch |
+| 2026-10-28 | 0.2 | Task 2.2 built. The plan checks a column entry's columns against the table itself, so an unknown column is refused by the dry run too and the command exits non-zero on it (TS-4 step 4); the database's own message is kept for what only it can refuse (BR-7, TN-4). A drop the database refuses is recorded on the plan and counts as refused (BR-7). The lines are one renderer, `indexes\Report`, for the command and the deploy hook (3.1) | Samuel Birch |

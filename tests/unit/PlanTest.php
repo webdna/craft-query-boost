@@ -188,6 +188,19 @@ class PlanTest extends Unit
         $this->assertFalse($plan->hasChanges());
     }
 
+    public function testAnEntryOnAColumnTheTableDoesNotHaveIsRefusedWithoutALookup(): void
+    {
+        // The plan sees a missing column itself, so the dry run refuses it before any DDL (TS-4 step 4).
+        $plan = $this->sync(owned: $this->builtInsOwned(), missing: ['noSuchColumn'])
+            ->plan([['table' => 'entries', 'columns' => ['sectionId', 'noSuchColumn']]]);
+
+        $refused = $plan->entries[2];
+        $this->assertSame(Plan::REFUSED, $refused->state);
+        $this->assertSame(Sync::REASON_COLUMN_NOT_FOUND . ': noSuchColumn', $refused->reason);
+        $this->assertSame(1, $plan->refusedCount());
+        $this->assertFalse($plan->hasChanges());
+    }
+
     // Drops (BR-9)
     // -------------------------------------------------------------------------
 
@@ -233,21 +246,33 @@ class PlanTest extends Unit
      * @param list<OwnedIndex> $owned Every `qb_` index the catalogue would list, in catalogue order
      * @param list<string> $tables The prefixed tables that exist
      * @param array<string, string> $serving Craft's lookup, `'{{%table}} col,col' => 'index name'`
+     * @param list<string> $missing Column names no table has; every other column exists
      */
-    private function sync(array $owned = [], array $tables = ['{{%entries}}', '{{%elements}}', '{{%elements_sites}}'], array $serving = []): Sync
+    private function sync(array $owned = [], array $tables = ['{{%entries}}', '{{%elements}}', '{{%elements_sites}}'], array $serving = [], array $missing = []): Sync
     {
-        $schema = new class($owned, $tables, $serving) extends Schema {
+        $schema = new class($owned, $tables, $serving, $missing) extends Schema {
             /**
              * @param list<OwnedIndex> $owned
              * @param list<string> $tables
              * @param array<string, string> $serving
+             * @param list<string> $missing Column names no table has; every other column exists
              */
             public function __construct(
                 private readonly array $owned,
                 private readonly array $tables,
                 private readonly array $serving,
+                private readonly array $missing,
             ) {
                 parent::__construct();
+            }
+
+            public function hasColumn(string $table, string $column): bool
+            {
+                if (!$this->tableExists($table)) {
+                    throw new LogicException("The column check was asked about $table, which does not exist");
+                }
+
+                return !in_array($column, $this->missing, true);
             }
 
             public function ownedIndexes(): array
