@@ -399,7 +399,7 @@ Phase 4 depends only on the harness and can be built beside 1–3; it is placed 
 
 ### Tasks
 
-- [ ] **0.1 The harness** - `docker-compose.yml`, `docker/php/Dockerfile`, `codeception.yml`, `tests/_bootstrap.php`, `tests/_craft/config/{db,general,test}.php`, `tests/unit.suite.yml`, `tests/integration.suite.yml`, `phpstan.neon`, `ecs.php`, `composer.json` (require-dev, scripts, autoload-dev), `.gitignore`; `tests/unit/QueryRewriterTest.php` covering today's tiebreaker and straight-join behaviour on a bare `craft\db\Query`. Add the craft5 mount in the handover.
+- [x] **0.1 The harness** - `docker-compose.yml`, `docker/php/Dockerfile`, `codeception.yml`, `tests/_bootstrap.php`, `tests/_craft/config/{db,general,test}.php`, `tests/unit.suite.yml`, `tests/integration.suite.yml`, `phpstan.neon`, `ecs.php`, `composer.json` (require-dev, scripts, autoload-dev), `.gitignore`; `tests/unit/QueryRewriterTest.php` covering today's tiebreaker and straight-join behaviour on a bare `craft\db\Query`. Add the craft5 mount in the handover.
       Rules: BR-16 - Verify: B5 #1, TS-11
 - [ ] **1.1 The settings key and the declaration** - `src/models/Settings.php` (`indexes`), `src/indexes/Declaration.php` (validation, refusal reasons as constants, derived name), `tests/unit/DeclarationTest.php`
       Rules: BR-1, BR-2, BR-3, BR-5 - Verify: B5 #1, TN-1, TN-2, TN-7

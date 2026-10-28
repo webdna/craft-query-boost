@@ -17,6 +17,8 @@ class QueryRewriter
     /**
      * Rewrites the subquery in place. Returns the element table alias it found, or null if the
      * subquery has none and was left alone.
+     *
+     * @param Query<array-key,mixed> $subQuery
      */
     public static function apply(Query $subQuery, bool $tiebreaker, bool $straightJoin): ?string
     {
@@ -56,6 +58,8 @@ class QueryRewriter
      * table. Only then does the rewrite turn a two-table sort into one an index can serve; a sort led
      * by an `elements` column (an address's `dateCreated`) is already served by `elements`' indexes,
      * and moving its tiebreaker off `elements` would force a filesort.
+     *
+     * @param Query<array-key,mixed> $subQuery
      */
     private static function sortsOnlyOn(Query $subQuery, string $alias): bool
     {
@@ -74,6 +78,8 @@ class QueryRewriter
 
     /**
      * Whether the query is unsorted, or sorted only by columns on the element table.
+     *
+     * @param Query<array-key,mixed> $subQuery
      */
     private static function sortIsOn(Query $subQuery, string $alias): bool
     {
@@ -87,6 +93,7 @@ class QueryRewriter
     }
 
     /**
+     * @param Query<array-key,mixed> $subQuery
      * @return array{int|string, string, array<string,string>}|null The join's key, its alias, and its table
      */
     private static function findElementTableJoin(Query $subQuery): ?array

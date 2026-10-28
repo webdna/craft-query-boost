@@ -1,0 +1,13 @@
+includes:
+    - vendor/craftcms/phpstan/phpstan.neon
+
+parameters:
+    level: 6
+    paths:
+        - src
+        - tests
+    excludePaths:
+        - tests/_craft/storage
+        - tests/_output
+        # Codeception builds it and .gitignore drops it, so a fresh checkout has none.
+        - tests/Support/_generated (?)

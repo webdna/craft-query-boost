@@ -1,0 +1,8 @@
+# Unit tier: Craft booted, nothing but the plugin's own logic under test — the rewriter on a bare
+# Query, a declaration's validation, a plan over recorded index lists.
+actor: UnitTester
+suite_namespace: webdna\queryboost\tests\unit
+modules:
+  enabled:
+    - Asserts
+    - \craft\test\Craft

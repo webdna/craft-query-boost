@@ -1,0 +1,7 @@
+# Integration tier: Craft booted against the MySQL container, real tables and real DDL.
+actor: IntegrationTester
+suite_namespace: webdna\queryboost\tests\integration
+modules:
+  enabled:
+    - Asserts
+    - \craft\test\Craft

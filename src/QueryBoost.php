@@ -3,6 +3,7 @@
 namespace webdna\queryboost;
 
 use Craft;
+use craft\base\ElementInterface;
 use craft\base\Model;
 use craft\base\Plugin;
 use craft\elements\db\ElementQuery;
@@ -27,7 +28,7 @@ class QueryBoost extends Plugin
         }
 
         Event::on(ElementQuery::class, ElementQuery::EVENT_AFTER_PREPARE, function(Event $event) {
-            /** @var ElementQuery $query */
+            /** @var ElementQuery<array-key,ElementInterface> $query */
             $query = $event->sender;
             if ($query->subQuery === null) {
                 return;
