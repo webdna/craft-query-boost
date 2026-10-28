@@ -411,7 +411,7 @@ Phase 4 depends only on the harness and can be built beside 1–3; it is placed 
       Rules: BR-10, BR-12, BR-13 - Verify: B5 #1, TS-6, TS-7, TN-9, TN-10, TN-15
 - [x] **4.1 The index-aware guard** - `src/QueryRewriter.php` (the guard takes the table's index list as an argument, so it stays testable without a database), `src/QueryBoost.php` (reads the list once per table per request and passes it), `src/indexes/Schema.php` (`columnIndexes()`, the one read), `tests/unit/GuardTest.php`, `tests/integration/SchemaTest.php`
       Rules: BR-14 - Verify: B5 #1, TS-8 step 2
-- [ ] **5.1 README and changelog** - `README.md` (the `indexes` section with a worked entry; the deploy, dry run, uninstall and Craft 6 paragraphs; "What it does" item 1 credited to pull request #19579 with #18716 kept for the query shape), `CHANGELOG.md` under Unreleased
+- [x] **5.1 README and changelog** - `README.md` (the `indexes` section with a worked entry; the deploy, dry run, uninstall and Craft 6 paragraphs; "What it does" item 1 credited to pull request #19579 with #18716 kept for the query shape), `CHANGELOG.md` under Unreleased
       Rules: BR-15 - Verify: B5 #5, TS-10
 - [ ] **5.2 Real-site proof and release readiness** - no code: `query-boost/compare` and `apply --dry-run` on craft5, turf5 and Heathfield inside snapshots, the timing columns recorded in the changelog's entry; `composer validate --strict`; the spec's §7 ticked; the handover lists what Sam creates (Appendix A #4)
       Rules: BR-16 - Verify: B5 #2, B5 #3, B5 #4, TS-1, TS-8
