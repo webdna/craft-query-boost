@@ -228,7 +228,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 - **A declared entry fixture** for craft5: `entries (sectionId, postDate)` is served by the built-in; the scenarios need an unserved one — `elements_sites (siteId, enabled)`, which exists on every Craft 5 site and has no composite index. **Does not exist in craft5 as an index** — correct, that is the point.
 - **A refused-entry fixture**: `entries (noSuchColumn)`. Needs nothing.
 - **The compose harness** (`docker-compose.yml`, the test app under `tests/_craft/`): **does not exist** — task 0.1 makes it (Appendix A has no row for it; it is the first task, not a question).
-- **A MariaDB or PostgreSQL copy**: does not exist. TN-6 and TN-11 are not run; Appendix A #3.
+- **A PostgreSQL copy**: the harness's `postgres` service, which task 5.3 adds (Appendix A #3, decided 28 Oct). **A MariaDB copy**: does not exist; TN-6 is not run.
 
 ### Scenarios
 
@@ -344,8 +344,9 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | 1 | `docker compose up -d mysql && docker compose run --rm php composer install` | Installs |
 | 2 | `docker compose run --rm php composer check` | ECS "No errors found"; PHPStan "[OK] No errors"; Codeception "OK (…)" for unit and integration |
 | 3 | `PHP_VERSION=8.4 docker compose run --rm php composer check` | The same on the 8.4 leg |
+| 4 | `docker compose up -d postgres && DB_DRIVER=pgsql docker compose run --rm php composer check` | The same on the PostgreSQL leg (task 5.3) |
 
-*Success criterion: step 2 and step 3 both end clean.*
+*Success criterion: steps 2, 3 and 4 all end clean.*
 
 ### Negative and edge cases
 
@@ -361,7 +362,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | TN-8 | A `qb_` index a developer created by hand that no entry derives | Dropped on the next apply, as documented in the README: the prefix is the plugin's |
 | TN-9 | `migrate/all` fails before the hook | No apply; no plugin line (BR-10) |
 | TN-10 | A web request, with changes pending | Nothing happens; no DDL on any web request (BR-13) |
-| TN-11 | PostgreSQL | **Not run** (Appendix A #3). The column-index path uses Craft's cross-driver helpers; the owned-index catalogue read has a driver branch that is written but unproved |
+| TN-11 | PostgreSQL | The harness's PostgreSQL leg (task 5.3) runs both suites against it: the owned-index catalogue read's `pg_indexes` branch, the served lookup, `columnIndexes()` and the hashed name under the 63-character limit. The column-index path uses Craft's cross-driver helpers |
 | TN-12 | Two deploys applying the same new entry at once | The second `CREATE INDEX` fails on the duplicate name; reported as refused on that deploy; the next apply finds it present |
 | TN-13 | The built-in's columns already indexed under Craft 6's own name (a site upgraded then rolled back) | Served; nothing created; uninstall drops nothing of Craft's (BR-4, BR-12) |
 | TN-14 | An entry whose index exists under its derived name but with different columns (edited by hand) | Reported as present by name; the plugin never alters an existing index. The README says strike it, deploy, re-declare |
@@ -393,7 +394,7 @@ No new table. **The settings file is the storage** — `config/query-boost.php` 
 | 2 | The apply step: schema reading, the plan, DDL, the result object; the console command with its dry run | 1 |
 | 3 | The deploy hook; install and uninstall | 2 |
 | 4 | The index-aware guard | 0 |
-| 5 | README, changelog, release readiness; the real-site proofs | 2, 3, 4 |
+| 5 | README, changelog, release readiness; the real-site proofs; the PostgreSQL leg | 2, 3, 4 |
 
 Phase 4 depends only on the harness and can be built beside 1–3; it is placed after them so the real-site compare runs once, over everything. The craft-perf subcommand (its own spec) can start once phase 1 fixes the entry shape.
 
@@ -415,6 +416,8 @@ Phase 4 depends only on the harness and can be built beside 1–3; it is placed 
       Rules: BR-15 - Verify: B5 #5, TS-10
 - [x] **5.2 Real-site proof and release readiness** - no code was planned; the runs added the install-time settings-file read (`src/QueryBoost.php::afterInstall()`, `tests/integration/InstallTest.php`, BR-12): `query-boost/compare` and `apply --dry-run` on craft5, turf5 and Heathfield inside snapshots, the timing columns recorded in the changelog's entry; `composer validate --strict`; the spec's §7 ticked; the handover lists what Sam creates (Appendix A #4)
       Rules: BR-16 - Verify: B5 #2, B5 #3, B5 #4, TS-1, TS-8
+- [ ] **5.3 The PostgreSQL leg** (Appendix A #3, decided 28 Oct) - `docker-compose.yml` (a `postgres` service with a healthcheck, beside `mysql`), `docker/php/Dockerfile` (`pdo_pgsql`), `tests/_craft/config/db.php` (driver, server, port and credentials from `DB_DRIVER` and its companions, MySQL when unset), `codeception.yml` and `tests/integration.suite.yml` only if the Craft module needs the driver named, `README.md` (the harness sentence names three legs); the owned-index catalogue read's `pg_indexes` branch, `columnIndexes()`, the served lookup and the hashed name under the 63-character limit proved by the existing suites on PostgreSQL, with fixes to `src/indexes/Schema.php` as the run demands; TN-11 run. MariaDB is not added
+      Rules: BR-16 - Verify: B5 #1 on the third leg, TS-11 step 4
 
 **Task right-sizing.** 2.1 and 2.2 split where a reviewer could accept the plan and reject the DDL. 3.1 is one task because install, uninstall and the hook are three callers of one step and are proved by one integration suite.
 
@@ -426,7 +429,7 @@ Phase 4 depends only on the harness and can be built beside 1–3; it is placed 
 |---|---|---|---|
 | 1 | Does `elements_sites (siteId, enabled)` hold on Heathfield and Roper Rhodes as it did on turf5 (590,322 rows read to 12,867, 87 ms to 14 ms, identical results)? If so it becomes a third built-in in a later release and an upstream pull request with the figures. A `/craft-perf db` run on each, read for that index's trial, answers it | Sam | Open - not blocking; decides a Later item |
 | 2 | Can a plugin switch Craft 5 to automatic lazy eager loading (craftcms/cms #19637's `autoEagerLoadElements`)? Needs a hook early enough in a query's life, checked in Craft 5's `ElementQuery`, not assumed | Sam | Open - not blocking; decides a Later item |
-| 3 | PostgreSQL and MariaDB are unproved for the index list: the README claims PostgreSQL for the plugin, and this spec's owned-index catalogue read has a PostgreSQL branch nobody has run (TN-11), while MariaDB refuses expression entries (TN-6). Add a PostgreSQL compose leg before release, or state in the README that the index list is proved on MySQL 8 only? | Sam | Open - blocking release |
+| 3 | PostgreSQL and MariaDB are unproved for the index list: the README claims PostgreSQL for the plugin, and this spec's owned-index catalogue read has a PostgreSQL branch nobody has run (TN-11), while MariaDB refuses expression entries (TN-6). Add a PostgreSQL compose leg before release, or state in the README that the index list is proved on MySQL 8 only? | Sam | Decided 28 Oct 2026: the compose leg, task 5.3, before release; MariaDB stays unproved, TN-6 recorded as not run |
 | 4 | The GitHub repository `webdna/craft-query-boost` and its Packagist listing do not exist (decided 28 Oct: free, MIT, there). Until they do, sites install from a path repository and turf5's `^1.0@dev` requirement cannot move | Sam | Open - blocking release |
 
 **Assumptions.**
@@ -476,14 +479,14 @@ Read `_PROFILE.query-boost.md`. Everything in it applies - the environment, the 
 
 ## B4. Definition of done
 
-- [x] Every AC in section 7 passes, TS-1 to TS-11 (TS-1 to TS-9 on craft5 28 Oct 2026; TS-1, TS-6, TS-7 and TS-8 step 3 on Heathfield the same day)
+- [ ] Every AC in section 7 passes, TS-1 to TS-11 (TS-1 to TS-9 on craft5 28 Oct 2026; TS-1, TS-6, TS-7 and TS-8 step 3 on Heathfield the same day; TS-11 step 4, the PostgreSQL leg, waits on task 5.3)
 - [x] Every BR in section 5 is enforced, not merely intended, BR-1 to BR-16
-- [x] The negative cases in section 7 behave as specified, TN-6 and TN-11 recorded as not run with Appendix A #3 open
+- [ ] The negative cases in section 7 behave as specified, TN-11 on the PostgreSQL leg (task 5.3), TN-6 recorded as not run (MariaDB, Appendix A #3)
 - [x] The regression checks in section 7 pass on craft5, turf5 and Heathfield, in snapshots, with the timings written in the changelog entry
 - [x] The test hooks in section 7 exist: the result object with its state constants, the public refusal reasons, the hook's condition as a callable method
-- [x] B5 below runs clean
+- [ ] B5 below runs clean, the PostgreSQL leg included (task 5.3)
 - [x] `README.md` and `CHANGELOG.md` updated in the same commits as the behaviour they describe
-- [x] Section 8's checklist ticked, Appendix A #3 and #4 handed to Sam
+- [ ] Section 8's checklist ticked, Appendix A #4 handed to Sam (#3 decided 28 Oct: task 5.3)
 
 ## B5. Verification
 
@@ -494,6 +497,9 @@ docker compose up -d mysql && docker compose run --rm php composer check
 # and the 8.4 leg:
 PHP_VERSION=8.4 docker compose run --rm php composer check
 # expect: the same
+# and the PostgreSQL leg (task 5.3):
+docker compose up -d postgres && DB_DRIVER=pgsql docker compose run --rm php composer check
+# expect: the same, both suites on PostgreSQL
 
 # 2. Composer metadata valid for Packagist
 docker compose run --rm php composer validate --strict --no-plugins
@@ -543,3 +549,4 @@ Manual checks, each against its criterion:
 | 2026-10-28 | 0.3 | Task 3.1 built. The deploy hook prints a line per change or refusal and the summary (`Report::changeLines()`), so an unchanged deploy is the one summary line (BR-10, TS-7); install prints every line, so a fresh site sees the built-ins and its list by name (TS-6). The hook's condition is `QueryBoost::shouldApplyAfter(ActionEvent)`; the install migration's `safeUp` applies the built-ins alone and the plugin's `afterInstall()` the list with them; `safeDown` drops every owned index from the catalogue, logging one the database refuses and carrying on (BR-12). TS-6 and TS-7 on craft5 wait for the sandbox mount (task 5.2) | Samuel Birch |
 | 2026-10-28 | 0.4 | Task 4.1 built. `QueryRewriter::apply()` takes a fourth argument, a callable giving the prefixed element table's column indexes as `list<list<string>>`, asked only after `sortsOnlyOn()` has passed; the guard is `indexServes()`, a contiguous-run match of the sort's non-tiebreaker columns over those lists (BR-14). The read is `indexes\Schema::columnIndexes()` over Craft's `findIndexes()`, cached by the plugin in a static per table per request (B3). The rewriter's one caller is the plugin, so the compare command is unchanged. TS-8 steps 1–3 on craft5 and Heathfield wait for the sandbox mount (task 5.2) | Samuel Birch |
 | 2026-10-28 | 0.5 | Task 5.2 run. TS-6 step 2 on craft5 found install applying the built-ins alone: Craft merges a plugin's settings file only once the plugin is installed, so `afterInstall()` now reads the file itself (BR-1, BR-12; `InstallTest` +1, failed first; B5 #1 clean on both legs). Fixtures corrected from the runs: TS-4 step 5 fixes the column to `dateUpdated`, because Craft indexes `postDate` itself and that entry is served (BR-4); TS-9 step 3 sets the environment in `.env` on a site whose bootstrap loads it mutably (craft5); craft5 installs from a copy under `plugins/`, not the mount. Proved 28 Oct: every compare row SAME on craft5 (59), turf5 (74) and Heathfield (149), TS-1 to TS-9 on craft5, TS-1, TS-6, TS-7 and TS-8 step 3 on Heathfield through `migrate/all` (the hooked action; `craft up` would apply Heathfield's drifted project config, B3), no cart created; timings in the changelog | Samuel Birch |
+| 2026-10-28 | 0.6 | Appendix A #3 decided (Sam): a PostgreSQL compose leg before release, task 5.3 under phase 5 — a `postgres` service, `pdo_pgsql`, a `DB_DRIVER` switch in the test app's `db.php`, both suites run on it (TS-11 step 4, B5 #1's third leg, TN-11), with fixes to the catalogue read as the run demands; MariaDB stays unproved, TN-6 recorded as not run. The B4 bullets that rested on #3 being open are unticked until 5.3 runs | Samuel Birch |
